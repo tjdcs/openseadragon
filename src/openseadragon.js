@@ -1505,28 +1505,28 @@ function OpenSeadragon( options ){
             prefixUrl:              "/images/",
             navImages: {
                 zoomIn: {
-                    REST:   'zoomin_rest.png',
-                    GROUP:  'zoomin_grouphover.png',
-                    HOVER:  'zoomin_hover.png',
-                    DOWN:   'zoomin_pressed.png'
+                    REST:   'zoomin_rest.svg',
+                    GROUP:  'zoomin_grouphover.svg',
+                    HOVER:  'zoomin_hover.svg',
+                    DOWN:   'zoomin_pressed.svg'
                 },
                 zoomOut: {
-                    REST:   'zoomout_rest.png',
-                    GROUP:  'zoomout_grouphover.png',
-                    HOVER:  'zoomout_hover.png',
-                    DOWN:   'zoomout_pressed.png'
+                    REST:   'zoomout_rest.svg',
+                    GROUP:  'zoomout_grouphover.svg',
+                    HOVER:  'zoomout_hover.svg',
+                    DOWN:   'zoomout_pressed.svg'
                 },
                 home: {
-                    REST:   'home_rest.png',
-                    GROUP:  'home_grouphover.png',
-                    HOVER:  'home_hover.png',
-                    DOWN:   'home_pressed.png'
+                    REST:   'home_rest.svg',
+                    GROUP:  'home_grouphover.svg',
+                    HOVER:  'home_hover.svg',
+                    DOWN:   'home_pressed.svg'
                 },
                 fullpage: {
-                    REST:   'fullpage_rest.png',
-                    GROUP:  'fullpage_grouphover.png',
-                    HOVER:  'fullpage_hover.png',
-                    DOWN:   'fullpage_pressed.png'
+                    REST:   'fullpage_rest.svg',
+                    GROUP:  'fullpage_grouphover.svg',
+                    HOVER:  'fullpage_hover.svg',
+                    DOWN:   'fullpage_pressed.svg'
                 },
                 rotateleft: {
                     REST:   'rotateleft_rest.png',
