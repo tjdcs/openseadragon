@@ -4403,6 +4403,24 @@ function handleNavKeys(viewer) {
     }
 }
 
+/**
+ * Cancels the downloads of tiles that the last level update of their
+ * TiledImage did not need for longer than tileLoadStaleTime.
+ * @function
+ * @private
+ */
+function cancelStaleTileLoads( viewer ) {
+    const staleTime = viewer.tileLoadStaleTime;
+    viewer.imageLoader.cancelJobs(function (job) {
+        const tile = job.tile;
+        const tiledImage = tile && tile.tiledImage;
+        if (!tiledImage || !tiledImage._lastLevelsUpdateTime) {
+            return false;
+        }
+        return tiledImage._lastLevelsUpdateTime - tile.lastTouchTime > staleTime;
+    });
+}
+
 function updateOnce( viewer ) {
 
     handleNavKeys(viewer);
@@ -4431,6 +4449,10 @@ function updateOnce( viewer ) {
 
     const viewportChange = viewer.viewport.update() || viewerWasResized;
     let animated = viewer.world.update(viewportChange) || viewportChange;
+
+    if (viewer.tileLoadStaleTime > 0) {
+        cancelStaleTileLoads(viewer);
+    }
 
     if (viewportChange) {
         /**

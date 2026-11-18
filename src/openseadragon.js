@@ -346,6 +346,12 @@
   *     it is set to 0 allowing the browser to make the maximum number of
   *     image requests in parallel as allowed by the browsers policy.
   *
+  * @property {Number} [tileLoadStaleTime=0]
+  *     Cancel a tile's queued or running download once the viewer has gone
+  *     this many milliseconds without needing the tile (it left the view, or
+  *     its level is no longer drawn), so it does not hold up the tiles in view.
+  *     A cancelled tile is requested again when it is needed. 0 never cancels.
+  *
   * @property {Number} [clickTimeThreshold=300]
   *      The number of milliseconds within which a pointer down-up event combination
   *      will be treated as a click gesture.
@@ -1496,6 +1502,7 @@ function OpenSeadragon( options ){
 
             //PERFORMANCE SETTINGS
             imageLoaderLimit:       0,
+            tileLoadStaleTime:      0,
             maxImageCacheCount:     200,
             timeout:                30000,
             tileRetryMax:           0,

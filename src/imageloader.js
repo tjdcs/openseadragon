@@ -392,6 +392,8 @@ $.ImageLoader = function(options) {
     }, options);
 
     this._batchBuckets = [];
+    // Started (non-batched) ImageJobs, so cancelJobs can reach them.
+    this._running = new Set();
 };
 
 /** @lends OpenSeadragon.ImageLoader.prototype */
@@ -447,8 +449,7 @@ $.ImageLoader.prototype = {
         }
 
         if ( !this.jobLimit || this.jobsInProgress < this.jobLimit ) {
-            newJob.start();
-            this.jobsInProgress++;
+            startJob(this, newJob);
             return true;
         }
         this.jobQueue.push( newJob );
@@ -538,6 +539,42 @@ $.ImageLoader.prototype = {
     },
 
     /**
+     * Cancel the queued and running image jobs that `predicate` selects.
+     * A cancelled job's callback is never called, only its `abort` option
+     * (the tile is left not loading, so it can be requested again). A running
+     * job's download is stopped through its source's downloadTileAbort and
+     * its slot goes to the next queued job. Batch jobs are left alone.
+     * @method
+     * @param {Function} predicate - Called with each {@link OpenSeadragon.ImageJob};
+     *      return true to cancel it.
+     * @returns {Number} The number of jobs cancelled.
+     */
+    cancelJobs: function(predicate) {
+        let cancelled = 0;
+        const kept = [];
+        for (const job of this.jobQueue) {
+            if (job instanceof $.ImageJob && predicate(job)) {
+                if (typeof job.abort === "function") {
+                    job.abort();
+                }
+                cancelled++;
+            } else {
+                kept.push(job);
+            }
+        }
+        this.jobQueue = kept;
+        for (const job of Array.from(this._running)) {
+            if (predicate(job)) {
+                // abort() fails the job, and completeJob sees `cancelled`.
+                job.cancelled = true;
+                job.abort();
+                cancelled++;
+            }
+        }
+        return cancelled;
+    },
+
+    /**
      * Clear any unstarted image loading jobs from the queue.
      * @method
      */
@@ -572,7 +609,8 @@ $.ImageLoader.prototype = {
  * @param callback - Called once cleanup is finished.
  */
 function completeJob(loader, job, callback) {
-    if (job.errorMsg && job.data === null && job.tries < 1 + loader.tileRetryMax) {
+    loader._running.delete(job);
+    if (!job.cancelled && job.errorMsg && job.data === null && job.tries < 1 + loader.tileRetryMax) {
         // Retries are ran separately.
         job.isBatched = false;
         loader.failedTiles.push(job);
@@ -584,24 +622,40 @@ function completeJob(loader, job, callback) {
     }
 
     if (loader.canAcceptNewJob() && loader.jobQueue.length > 0) {
-        let nextJob = loader.jobQueue.shift();
-        nextJob.start();
-        loader.jobsInProgress++;
+        startJob(loader, loader.jobQueue.shift());
     }
 
     if (loader.tileRetryMax > 0 && loader.jobQueue.length === 0) {
         if (loader.canAcceptNewJob() && loader.failedTiles.length > 0) {
             let nextJob = loader.failedTiles.shift();
             setTimeout(function () {
+                loader._running.add(nextJob);
                 nextJob.start();
             }, loader.tileRetryDelay);
             loader.jobsInProgress++;
         }
     }
 
-    if (callback) {
+    if (callback && !job.cancelled) {
         callback(job.data, job.errorMsg, job.request, job.dataType, job.tries);
     }
+}
+
+/**
+ * Starts a job taken from the queue (or a new one) and counts it as running.
+ * @method
+ * @private
+ * @param loader - ImageLoader the job belongs to.
+ * @param {OpenSeadragon.ImageJob|OpenSeadragon.BatchImageJob} job
+ */
+function startJob(loader, job) {
+    // Tracked before start(): a job that completes synchronously is untracked
+    // again by completeJob.
+    if (job instanceof $.ImageJob) {
+        loader._running.add(job);
+    }
+    job.start();
+    loader.jobsInProgress++;
 }
 
 /**

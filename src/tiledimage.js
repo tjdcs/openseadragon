@@ -1517,6 +1517,8 @@ $.extend($.TiledImage.prototype, $.EventSource.prototype, /** @lends OpenSeadrag
             loadArea = this.getLoadArea();
         }
         const currentTime = $.now();
+        // Tiles this pass needs get lastTouchTime = currentTime (_getTile).
+        this._lastLevelsUpdateTime = currentTime;
 
         // reset each tile's beingDrawn flag
         for (const tileInfo of this._lastDrawn) {

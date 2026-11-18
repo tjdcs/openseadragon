@@ -385,6 +385,7 @@ declare namespace OpenSeadragon {
         visibilityRatio?: number;
         viewportMargins?: object;
         imageLoaderLimit?: number;
+        tileLoadStaleTime?: number;
         clickTimeThreshold?: number;
         clickDistThreshold?: number;
         dblClickTimeThreshold?: number;
