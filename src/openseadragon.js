@@ -329,6 +329,19 @@
   *
   * @property {Number} [pixelsPerArrowPress=40]
   *     The number of pixels viewport moves when an arrow key is pressed.
+  *     Not used when keyboardPanStep or keyboardPanSpeed is set.
+  *
+  * @property {Number} [keyboardPanStep=0]
+  *     Distance a tap of a pan key (arrows, WASD) moves the view, as a fraction of
+  *     the view (its width for left/right, its height for up/down), e.g. 1/3.
+  *     With keyboardPanSpeed, a press held for t seconds moves
+  *     max(keyboardPanStep, keyboardPanSpeed * t): linearly at keyboardPanSpeed
+  *     while held, then what is left of the step glides on the viewport's springs
+  *     (animationTime). 0 for both keeps the pixelsPerArrowPress per-frame panning.
+  *
+  * @property {Number} [keyboardPanSpeed=0]
+  *     Speed a held pan key moves the view, as a fraction of the view per second
+  *     (see keyboardPanStep). Time based, so independent of the frame rate.
   *
   * @property {Number} [visibilityRatio=0.5]
   *     The percentage ( as a number from 0 to 1 ) of the source image which
@@ -593,6 +606,15 @@
   *
   * @property {boolean} [keyboardNavEnabled=true]
   *     Is the user able to interact with the image via keyboard.
+  *
+  * @property {String} [keyboardNavScope='canvas']
+  *     Where the navigation keys (arrows and WASD pan, Shift+Up/Down and +/- zoom,
+  *     0 home, R rotate, F flip) are taken from. 'canvas': only while the viewer's
+  *     canvas has keyboard focus. 'document': also from the rest of the page, so
+  *     they work without clicking the image first, unless the focused element uses
+  *     the keys itself (text fields, selects, range inputs, contenteditable, and
+  *     ARIA widgets such as sliders, listboxes and menus). Use 'document' only for
+  *     one viewer on a page that doesn't scroll with the arrow keys.
   *
   * @property {Boolean} [showNavigationControl=true]
   *     Set to false to prevent the appearance of the default navigation controls.<br>
@@ -1416,6 +1438,8 @@ function OpenSeadragon( options ){
             iOSDevice:              isIOSDevice(),
             pixelsPerWheelLine:     40,
             pixelsPerArrowPress:    40,
+            keyboardPanStep:        0,  //fraction of the view per tap; 0: pixelsPerArrowPress
+            keyboardPanSpeed:       0,  //fraction of the view per second held
             autoResize:             true,
             preserveImageSizeOnResize: false, // requires autoResize=true
             minScrollDeltaTime:     50,
@@ -1439,6 +1463,7 @@ function OpenSeadragon( options ){
             controlsFadeLength:      1500,  //ZOOM/HOME/FULL/SEQUENCE
             mouseNavEnabled:         true,  //GENERAL MOUSE INTERACTIVITY
             keyboardNavEnabled:      true,  //GENERAL KEYBOARD INTERACTIVITY
+            keyboardNavScope:        'canvas', //'canvas' or 'document'
 
             //VIEWPORT NAVIGATOR SETTINGS
             showNavigator:              false,

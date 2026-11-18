@@ -382,6 +382,8 @@ declare namespace OpenSeadragon {
         maxTilesPerFrame?: number;
         pixelsPerWheelLine?: number;
         pixelsPerArrowPress?: number;
+        keyboardPanStep?: number;
+        keyboardPanSpeed?: number;
         visibilityRatio?: number;
         viewportMargins?: object;
         imageLoaderLimit?: number;
@@ -437,6 +439,7 @@ declare namespace OpenSeadragon {
         minPixelRatio?: number;
         mouseNavEnabled?: boolean;
         keyboardNavEnabled?: boolean;
+        keyboardNavScope?: "canvas" | "document";
         showNavigationControl?: boolean;
         navigationControlAnchor?: ControlAnchor;
         showZoomControl?: boolean;

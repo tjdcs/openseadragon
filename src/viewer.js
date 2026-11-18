@@ -272,6 +272,7 @@ $.Viewer = function( options ) {
     this._navActionFrames = {};     // tracks cumulative pan distance per key press
     this._navActionVirtuallyHeld = {};   // marks keys virtually held after early release
     this._minNavActionFrames = 10;      // minimum pan distance per tap or key press
+    this._keyPans = {};     // keyboardPanStep/Speed: per pan action, { start, released, done } (ms, view fraction)
 
     this._activeActions = { // variable to keep track of currently pressed action
         // Basic arrow key panning (no modifiers)
@@ -389,6 +390,24 @@ $.Viewer = function( options ) {
         focusHandler:             $.delegate( this, onCanvasFocus ),
         blurHandler:              $.delegate( this, onCanvasBlur ),
     });
+
+    // keyboardNavScope 'document': take the navigation keys from the whole page,
+    // not only the focused canvas (whose tracker above still handles its own keys).
+    if ( this.keyboardNavScope === 'document' ) {
+        this._documentKeyDown = $.delegate( this, function( event ) {
+            onDocumentKey( this, onCanvasKeyDown, event );
+        } );
+        this._documentKeyUp = $.delegate( this, function( event ) {
+            onDocumentKey( this, onCanvasKeyUp, event );
+        } );
+        // A key released outside the page sends no keyup: stop any held pan or zoom.
+        this._windowBlur = $.delegate( this, function() {
+            clearNavActions( this );
+        } );
+        document.addEventListener( 'keydown', this._documentKeyDown );
+        document.addEventListener( 'keyup', this._documentKeyUp );
+        window.addEventListener( 'blur', this._windowBlur );
+    }
 
     // Apply the initial cooperative gesture config (canvas/container touch-action + inner tracker)
     // now that the tracker exists. Single source of truth, also used on full-page change and toggle.
@@ -1033,6 +1052,13 @@ $.extend( $.Viewer.prototype, $.EventSource.prototype, $.ControlDock.prototype, 
          * @property {?Object} userData - Arbitrary subscriber-defined object.
          */
         this.raiseEvent( 'before-destroy' );
+
+        if ( this._documentKeyDown ) {
+            document.removeEventListener( 'keydown', this._documentKeyDown );
+            document.removeEventListener( 'keyup', this._documentKeyUp );
+            window.removeEventListener( 'blur', this._windowBlur );
+            this._documentKeyDown = this._documentKeyUp = this._windowBlur = null;
+        }
 
         this._removeUpdatePixelDensityRatioEvent();
 
@@ -3462,6 +3488,9 @@ function onCanvasKeyUp(event) {
 
         if (action && this._activeActions[action]) {
             this._activeActions[action] = false;
+            if (this._keyPans[action] && this._keyPans[action].released === null) {
+                this._keyPans[action].released = $.now();
+            }
             // If the action was released before the minimum frame threshold,
             // keep it "virtually held" for smoothness
             if (this._navActionFrames[action] < this._minNavActionFrames) {
@@ -3509,9 +3538,15 @@ function onCanvasKeyDown( event ) {
         const shift = event.shift;
         const action = getActiveActionFromKey(code, shift);
 
-        if (action && !this._activeActions[action]) {
+        if (action && this._activeActions[action]) {
+            event.preventDefault = true; // auto-repeat of a held key: the action is already running
+            return;
+        }
+
+        if (action) {
             this._activeActions[action] = true; // Mark this action as held down in the viewer's internal tracking object
             this._navActionFrames[action] = 0; // Reset action frames
+            this._keyPans[action] = { start: $.now(), released: null, done: 0 };
             event.preventDefault = true; // prevent browser scroll/zoom, etc
             return;
         }
@@ -4133,15 +4168,78 @@ function onCanvasFocus( event ) {
     });
 }
 
+/**
+ * Marks every keyboard navigation action as released, so no pan or zoom keeps running.
+ * @private
+ */
+function clearNavActions( viewer ) {
+    viewer._keyPans = {};
+    for (const action in viewer._activeActions) {
+        viewer._activeActions[action] = false;
+    }
+    for (const action in viewer._navActionVirtuallyHeld) {
+        viewer._navActionVirtuallyHeld[action] = false;
+    }
+}
+
+// ARIA widgets that use the arrow keys themselves (keyboardNavScope 'document' leaves them alone).
+const KEY_OWNER_ROLES = [ 'slider', 'textbox', 'combobox', 'listbox', 'menu', 'menuitem',
+    'radiogroup', 'tablist', 'spinbutton', 'grid', 'tree' ]
+    .map( role => '[role="' + role + '"]' ).join( ',' );
+
+/**
+ * Whether the focused element `el` handles keys itself (text entry, selects, range inputs, ARIA widgets).
+ * @private
+ */
+function ownsKeys( el ) {
+    if ( !( el instanceof Element ) ) {
+        return false;
+    }
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' ||
+        el.isContentEditable || el.closest( KEY_OWNER_ROLES ) !== null;
+}
+
+/**
+ * keyboardNavScope 'document': passes a page-level keydown or keyup to the canvas key `handler`
+ * (onCanvasKeyDown or onCanvasKeyUp), in the MouseTracker event shape, unless the canvas tracker
+ * already handles it (focus in the canvas), the focused element uses the keys, or the viewer
+ * is not displayed.
+ * @private
+ */
+function onDocumentKey( viewer, handler, event ) {
+    if ( event.defaultPrevented || event.isComposing ) {
+        return;
+    }
+    const target = event.target;
+    if ( target instanceof Node && viewer.canvas.contains( target ) ) {
+        return;
+    }
+    if ( ownsKeys( target ) ) {
+        return;
+    }
+    if ( viewer.element.getClientRects().length === 0 ) {
+        return; // display: none, here or in an ancestor
+    }
+    const args = {
+        originalEvent: event,
+        keyCode: event.keyCode ? event.keyCode : event.charCode,
+        ctrl: event.ctrlKey,
+        shift: event.shiftKey,
+        alt: event.altKey,
+        meta: event.metaKey,
+        preventDefault: false
+    };
+    handler.call( viewer, args );
+    if ( args.preventDefault ) {
+        event.preventDefault();
+    }
+}
+
 function onCanvasBlur( event ) {
 
     // When canvas loses focus, clear all navigation key states.
-    for (const action in this._activeActions) {
-        this._activeActions[action] = false;
-    }
-    for (const action in this._navActionVirtuallyHeld) {
-        this._navActionVirtuallyHeld[action] = false;
-    }
+    clearNavActions( this );
 
     /**
      * Raised when the {@link OpenSeadragon.Viewer#canvas} element loses keyboard focus.
@@ -4359,6 +4457,12 @@ function handleNavKeys(viewer) {
         return viewer._activeActions[action] || viewer._navActionVirtuallyHeld[action];
     }
 
+    // keyboardPanStep/keyboardPanSpeed replace the per-frame pixel pan below.
+    const timedPan = viewer.keyboardPanStep > 0 || viewer.keyboardPanSpeed > 0;
+    if (timedPan) {
+        handleTimedKeyPans(viewer);
+    }
+
     // Use the viewer's configured pan amount
     const pixels = viewer.pixelsPerArrowPress / 10;
     const panDelta = viewer.viewport.deltaPointsFromPixels(new OpenSeadragon.Point(pixels, pixels));
@@ -4376,6 +4480,9 @@ function handleNavKeys(viewer) {
     }
 
     // 2. Pan actions
+    if (timedPan) {
+        return;
+    }
     let dx = 0;
     let dy = 0;
 
@@ -4400,6 +4507,68 @@ function handleNavKeys(viewer) {
     if (dx !== 0 || dy !== 0) {
         viewer.viewport.panBy(new OpenSeadragon.Point(dx, dy), true);
         viewer.viewport.applyConstraints();
+    }
+}
+
+// Direction of each pan action, in container pixels per unit of view size.
+const KEY_PAN_DIRECTIONS = {
+    panUp: { x: 0, y: -1 },
+    panDown: { x: 0, y: 1 },
+    panLeft: { x: -1, y: 0 },
+    panRight: { x: 1, y: 0 },
+};
+
+/**
+ * keyboardPanStep / keyboardPanSpeed: pans by fractions of the view (its width for left/right,
+ * height for up/down). While a pan key is held the view moves linearly at keyboardPanSpeed (the
+ * centre springs are shifted, so an animation in flight carries on), exact and independent of
+ * the frame rate. On release, whatever is left of keyboardPanStep glides on the springs, so a
+ * press moves max(keyboardPanStep, keyboardPanSpeed * seconds held) in total.
+ * @private
+ */
+function handleTimedKeyPans( viewer ) {
+    const now = $.now();
+    const step = viewer.keyboardPanStep || 0;
+    const speed = viewer.keyboardPanSpeed || 0;
+    const size = viewer.viewport.getContainerSize();
+    const linear = new $.Point( 0, 0 ); // container pixels, applied immediately
+    const glide = new $.Point( 0, 0 );  // container pixels, animated
+
+    for ( const action in viewer._keyPans ) {
+        const pan = viewer._keyPans[action];
+        const direction = KEY_PAN_DIRECTIONS[action];
+        if ( !direction ) {
+            delete viewer._keyPans[action]; // a zoom action
+            continue;
+        }
+        const released = pan.released !== null;
+        const held = speed * ( ( released ? pan.released : now ) - pan.start ) / 1000;
+        const moving = held - pan.done;
+        const rest = released ? Math.max( step - held, 0 ) : 0;
+        pan.done = held;
+        if ( released ) {
+            delete viewer._keyPans[action];
+        }
+        if ( ( direction.y && viewer.preventVerticalPan ) || ( direction.x && viewer.preventHorizontalPan ) ) {
+            continue;
+        }
+        linear.x += direction.x * moving * size.x;
+        linear.y += direction.y * moving * size.y;
+        glide.x += direction.x * rest * size.x;
+        glide.y += direction.y * rest * size.y;
+    }
+
+    const viewport = viewer.viewport;
+    if ( linear.x !== 0 || linear.y !== 0 ) {
+        const delta = viewport.deltaPointsFromPixels( linear );
+        viewport.centerSpringX.shiftBy( delta.x );
+        viewport.centerSpringY.shiftBy( delta.y );
+    }
+    if ( glide.x !== 0 || glide.y !== 0 ) {
+        viewport.panBy( viewport.deltaPointsFromPixels( glide ) );
+    }
+    if ( linear.x !== 0 || linear.y !== 0 || glide.x !== 0 || glide.y !== 0 ) {
+        viewport.applyConstraints();
     }
 }
 
